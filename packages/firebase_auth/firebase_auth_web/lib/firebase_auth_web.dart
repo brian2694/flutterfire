@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:html';
 
 import 'package:firebase_auth_platform_interface/firebase_auth_platform_interface.dart';
 import 'package:firebase/firebase.dart' as firebase;
@@ -343,8 +344,79 @@ class FirebaseAuthWeb extends FirebaseAuthPlatform {
       @required PhoneCodeAutoRetrievalTimeout codeAutoRetrievalTimeout,
       String autoRetrievedSmsCodeForTesting,
       Duration timeout = const Duration(seconds: 30),
-      int forceResendingToken}) {
-    throw UnimplementedError(
-        'verifyPhoneNumber() is not supported on the web. Please use `signInWithPhoneNumber` instead.');
+      int forceResendingToken}) async {
+    if (window.document.getElementById("recaptcha-container") == null) {
+      window.document.documentElement.children
+          .add(DivElement()..id = "recaptcha-container");
+    }
+
+    firebase.RecaptchaVerifier verifier =
+        firebase.RecaptchaVerifier('recaptcha-container', {
+      'size': 'invisible',
+      'callback': (resp) {
+        print('reCAPTCHA solved, allow signInWithPhoneNumber.');
+      },
+      'expired-callback': () {
+        verificationFailed(FirebaseAuthException(
+            code: 'expired-callback', message: 'reCAPTCHA expired'));
+      }
+    });
+    verifier.render();
+    firebase.ConfirmationResult _confirmationResult;
+    try {
+      _confirmationResult =
+          await firebase.auth().signInWithPhoneNumber(phoneNumber, verifier);
+    } on FirebaseAuthException catch (e) {
+      verificationFailed(e);
+    } catch (error) {
+      verificationFailed(FirebaseAuthException(
+          code: 'verificationFailed', message: error.toString()));
+    }
+    verifier.clear();
+    window.document.getElementById("recaptcha-container").remove();
+    if (_confirmationResult != null) {
+      codeSent(_confirmationResult.verificationId, forceResendingToken);
+    }
   }
 }
+// @override
+//   Future<void> verifyPhoneNumber(String app,
+//       {String phoneNumber,
+//       Duration timeout,
+//       int forceResendingToken,
+//       PhoneVerificationCompleted verificationCompleted,
+//       PhoneVerificationFailed verificationFailed,
+//       PhoneCodeSent codeSent,
+//       PhoneCodeAutoRetrievalTimeout codeAutoRetrievalTimeout}) async {
+//     if (window.document.getElementById("recaptcha-container") == null) {
+//       window.document.documentElement.children
+//           .add(DivElement()..id = "recaptcha-container");
+//     }
+
+//     firebase.RecaptchaVerifier verifier =
+//         firebase.RecaptchaVerifier('recaptcha-container', {
+//       'size': 'invisible',
+//       'callback': (resp) {
+//         print('reCAPTCHA solved, allow signInWithPhoneNumber.');
+//       },
+//       'expired-callback': () {
+//         verificationFailed(
+//             AuthException('expired-callback', 'reCAPTCHA expired'));
+//       }
+//     });
+//     verifier.render();
+//     firebase.ConfirmationResult _confirmationResult;
+//     try {
+//       _confirmationResult =
+//           await firebase.auth().signInWithPhoneNumber(phoneNumber, verifier);
+//     } on AuthException catch (e) {
+//       verificationFailed(e);
+//     } catch (error) {
+//       verificationFailed(AuthException('verificationFailed', error.toString()));
+//     }
+//     verifier.clear();
+//     window.document.getElementById("recaptcha-container").remove();
+//     if (_confirmationResult != null) {
+//       codeSent(_confirmationResult.verificationId);
+//     }
+//   }
